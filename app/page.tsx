@@ -50,7 +50,7 @@ export default function Page() {
     const controller = new AbortController();
     const timeout = setTimeout(() => {
       controller.abort(); // cancela la petición si pasa el tiempo límite
-    }, 10000); // 10 segundos de timeout
+    }, 17000); // 17 segundos de timeout
     try {
       const res = await fetch(CHAT_URL, {
         method: "POST",
