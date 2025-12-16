@@ -1,15 +1,15 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import ProductCard from "./components/ProductCard";
-import { ChatResponse, Product } from "./interfaces/types";
-
+import BrandCard from "./components/BrandCard"; // 🔥 NUEVO: Importar BrandCard
+import { ChatResponse, DisplayItem } from "./interfaces/types"; // 🔥 CAMBIADO: DisplayItem
 
 interface ChatMessage {
   id: number;
   from: "user" | "bot";
   text?: string;
-  products?: Product[];
+  products?: DisplayItem[]; // 🔥 CAMBIADO: Product[] → DisplayItem[]
   suggestions?: string[];
 }
 
@@ -19,6 +19,7 @@ export default function Page() {
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
@@ -27,30 +28,53 @@ export default function Page() {
 
   if (!BACKEND_URL || !CHAT_ENDPOINT || !API_KEY) {
     throw new Error(
-      "Falta la configuración de las variables de entorno NEXT_PUBLIC_BACKEND_URL, NEXT_PUBLIC_CHAT_ENDPOINT o NEXT_PUBLIC_BACKEND_API_KEY"
+      "Falta la configuración de las variables de entorno"
     );
   }
 
   const CHAT_URL = `${BACKEND_URL}${CHAT_ENDPOINT}`;
 
+  // Inicializar sessionId desde localStorage o generar uno nuevo
+  useEffect(() => {
+    const savedSessionId = localStorage.getItem("chat_session_id");
+    if (savedSessionId) {
+      setSessionId(savedSessionId);
+      console.log("📝 Sesión recuperada:", savedSessionId);
+    } else {
+      const newSessionId = `web_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      setSessionId(newSessionId);
+      localStorage.setItem("chat_session_id", newSessionId);
+      console.log("🆕 Nueva sesión creada:", newSessionId);
+    }
+  }, []);
+
   const sendMessage = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!input.trim() || loading) return;
-    // Generar un sessionId aleatorio
-    const sessionId = `session-${Math.random().toString(36).substring(2, 10)}`;
+    
+    if (!input.trim() || loading || !sessionId) return;
 
-    const userMsg: ChatMessage = { id: Date.now(), from: "user", text: input };
+    const userMsg: ChatMessage = { 
+      id: Date.now(), 
+      from: "user", 
+      text: input 
+    };
     setMessages((prev) => [...prev, userMsg]);
 
     setInput("");
     setLoading(true);
 
     const botTypingId = Date.now() + 1;
-    setMessages((prev) => [...prev, { id: botTypingId, from: "bot", text: "..." }]);
+    setMessages((prev) => [...prev, { 
+      id: botTypingId, 
+      from: "bot", 
+      text: "..." 
+    }]);
+    
     const controller = new AbortController();
     const timeout = setTimeout(() => {
-      controller.abort(); // cancela la petición si pasa el tiempo límite
-    }, 17000); // 17 segundos de timeout
+      controller.abort();
+    }, 25000);
+
     try {
       const res = await fetch(CHAT_URL, {
         method: "POST",
@@ -60,14 +84,21 @@ export default function Page() {
         },
         body: JSON.stringify({
           message: userMsg.text,
-          userId: "user123", // fijo por ahora
-          sessionId,
+          userId: "web_user",
+          sessionId: sessionId,
         }),
-        signal: controller.signal, // asociamos el controller
+        signal: controller.signal,
       });
 
-      clearTimeout(timeout); // si la petición termina, limpiamos el timeout
+      clearTimeout(timeout);
       const data: ChatResponse = await res.json();
+
+      // Si el backend devuelve un sessionId diferente, usarlo
+      if (data.sessionId && data.sessionId !== sessionId) {
+        setSessionId(data.sessionId);
+        localStorage.setItem("chat_session_id", data.sessionId);
+        console.log("🔄 SessionId actualizado:", data.sessionId);
+      }
 
       setMessages((prev) =>
         prev.map((msg) => {
@@ -86,20 +117,24 @@ export default function Page() {
       clearTimeout(timeout);
 
       if (err.name === "AbortError") {
-        // Timeout
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === botTypingId
-              ? { ...msg, text: "La plataforma está en mantenimiento, por favor intente más tarde." }
+              ? { 
+                  ...msg, 
+                  text: "La plataforma está en mantenimiento, por favor intente más tarde." 
+                }
               : msg
           )
         );
       } else {
-        // Otro error
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === botTypingId
-              ? { ...msg, text: "Error de conexión. Inténtalo más tarde." }
+              ? { 
+                  ...msg, 
+                  text: "Error de conexión. Inténtalo más tarde." 
+                }
               : msg
           )
         );
@@ -110,14 +145,55 @@ export default function Page() {
     }
   };
 
+  // Botón para reiniciar la conversación
+  const resetConversation = () => {
+    const newSessionId = `web_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    setSessionId(newSessionId);
+    localStorage.setItem("chat_session_id", newSessionId);
+    setMessages([
+      { 
+        id: 1, 
+        from: "bot", 
+        text: "Hola 👋 ¿En qué puedo ayudarte hoy?" 
+      }
+    ]);
+    console.log("🔄 Conversación reiniciada con sessionId:", newSessionId);
+  };
+
+  // 🔥 NUEVA FUNCIÓN: Renderizar el tipo correcto de tarjeta
+  const renderItemCard = (item: DisplayItem) => {
+    console.log("OJO "+JSON.stringify(item))
+    if (item.type === 'brand') {
+      return <BrandCard key={item.id} brand={item} />;
+    } else {
+      return <ProductCard key={item.id} product={item} />;
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center p-6">
       <div className="w-full max-w-2xl bg-white shadow-xl rounded-2xl overflow-hidden border border-gray-200">
-        {/* Header */}
-        <header className="p-5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
-          <h1 className="text-xl font-semibold">Asistente de la Tienda</h1>
-          <p className="text-sm opacity-90">Soporte con IA + OpenCart</p>
+        {/* Header con botón de reinicio */}
+        <header className="p-5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white flex justify-between items-center">
+          <div>
+            <h1 className="text-xl font-semibold">Asistente de la Tienda</h1>
+            <p className="text-sm opacity-90">Soporte con IA + OpenCart</p>
+          </div>
+          <button
+            onClick={resetConversation}
+            className="px-3 py-1 bg-white text-indigo-600 rounded-lg text-sm font-medium hover:bg-gray-100 transition"
+            title="Reiniciar conversación"
+          >
+            Nueva conversación
+          </button>
         </header>
+
+        {/* Indicador de sesión (solo en desarrollo) */}
+        {process.env.NODE_ENV === "development" && sessionId && (
+          <div className="px-5 py-2 bg-gray-100 text-xs text-gray-600 border-b">
+            Sesión: {sessionId.substring(0, 20)}...
+          </div>
+        )}
 
         {/* Chat window */}
         <main className="p-5 h-[60vh] overflow-y-auto space-y-4 bg-gray-50">
@@ -137,16 +213,14 @@ export default function Page() {
                 </div>
               )}
 
-              {/* Renderizamos cards usando el componente ProductCard */}
+              {/* 🔥 MODIFICADO: Product/Brand cards */}
               {m.products && m.products.length > 0 && (
-                <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-[70%]">
-                  {m.products.map((p) => (
-                    <ProductCard key={p.id} product={p} />
-                  ))}
+                <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 w-full max-w-[90%]">
+                  {m.products.map((item) => renderItemCard(item))}
                 </div>
               )}
 
-              {/* Sugerencias rápidas */}
+              {/* Quick suggestions */}
               {m.suggestions && m.suggestions.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-2 max-w-[70%]">
                   {m.suggestions.map((s, idx) => (
