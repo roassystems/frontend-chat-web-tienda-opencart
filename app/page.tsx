@@ -9,8 +9,38 @@ interface ChatMessage {
   id: number;
   from: "user" | "bot";
   text?: string;
+  html?: string; // 🔥 Nuevo campo opcional para HTML
   products?: DisplayItem[]; // 🔥 CAMBIADO: Product[] → DisplayItem[]
   suggestions?: string[];
+}
+
+// Función segura
+const safeUrlToLinks = (text: string) => {
+  if (!text) return '';
+
+  // Escape HTML
+  const escaped = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  // Convertir URLs
+  return escaped.replace(
+    /(https?:\/\/[^\s]+)/g,
+    (url) => `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:underline">${url}</a>`
+  );
+};
+
+function formatMessageWithLinks(message: string | undefined) {
+  if (message == undefined) {
+    return
+  } else {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    return message.replace(urlRegex, (url) => {
+      return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="product-link">${url}</a>`;
+    });
+
+  }
 }
 
 export default function Page() {
@@ -50,13 +80,13 @@ export default function Page() {
 
   const sendMessage = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    
+
     if (!input.trim() || loading || !sessionId) return;
 
-    const userMsg: ChatMessage = { 
-      id: Date.now(), 
-      from: "user", 
-      text: input 
+    const userMsg: ChatMessage = {
+      id: Date.now(),
+      from: "user",
+      text: input
     };
     setMessages((prev) => [...prev, userMsg]);
 
@@ -64,12 +94,12 @@ export default function Page() {
     setLoading(true);
 
     const botTypingId = Date.now() + 1;
-    setMessages((prev) => [...prev, { 
-      id: botTypingId, 
-      from: "bot", 
-      text: "..." 
+    setMessages((prev) => [...prev, {
+      id: botTypingId,
+      from: "bot",
+      text: "..."
     }]);
-    
+
     const controller = new AbortController();
     const timeout = setTimeout(() => {
       controller.abort();
@@ -107,6 +137,12 @@ export default function Page() {
           return {
             ...msg,
             text: data.response || undefined,
+            html: data.response ?
+              data.response.replace(
+                /(https?:\/\/[^\s]+)/g,
+                (url) => `<a href="${url}" target="_blank" rel="noopener noreferrer" 
+                    class="text-blue-500 hover:underline break-all">${url}</a>`
+              ) : undefined, // 🔥 HTML con enlaces
             products: data.products || undefined,
             suggestions: data.suggestions || undefined,
           };
@@ -120,10 +156,10 @@ export default function Page() {
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === botTypingId
-              ? { 
-                  ...msg, 
-                  text: "La plataforma está en mantenimiento, por favor intente más tarde." 
-                }
+              ? {
+                ...msg,
+                text: "La plataforma está en mantenimiento, por favor intente más tarde."
+              }
               : msg
           )
         );
@@ -131,10 +167,10 @@ export default function Page() {
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === botTypingId
-              ? { 
-                  ...msg, 
-                  text: "Error de conexión. Inténtalo más tarde." 
-                }
+              ? {
+                ...msg,
+                text: "Error de conexión. Inténtalo más tarde."
+              }
               : msg
           )
         );
@@ -151,10 +187,10 @@ export default function Page() {
     setSessionId(newSessionId);
     localStorage.setItem("chat_session_id", newSessionId);
     setMessages([
-      { 
-        id: 1, 
-        from: "bot", 
-        text: "Hola 👋 ¿En qué puedo ayudarte hoy?" 
+      {
+        id: 1,
+        from: "bot",
+        text: "Hola 👋 ¿En qué puedo ayudarte hoy?"
       }
     ]);
     console.log("🔄 Conversación reiniciada con sessionId:", newSessionId);
@@ -162,7 +198,7 @@ export default function Page() {
 
   // 🔥 NUEVA FUNCIÓN: Renderizar el tipo correcto de tarjeta
   const renderItemCard = (item: DisplayItem) => {
-    console.log("OJO "+JSON.stringify(item))
+    console.log("OJO " + JSON.stringify(item))
     if (item.type === 'brand') {
       return <BrandCard key={item.id} brand={item} />;
     } else {
@@ -205,12 +241,11 @@ export default function Page() {
               {m.text && (
                 <div
                   className={`px-4 py-2 rounded-xl max-w-[70%] whitespace-pre-wrap
-                    ${m.from === "user"
+      ${m.from === "user"
                       ? "bg-indigo-600 text-white"
                       : "bg-white border border-gray-200 text-gray-900"}`}
-                >
-                  {m.text}
-                </div>
+                  dangerouslySetInnerHTML={{ __html: safeUrlToLinks(m.text) }}
+                />
               )}
 
               {/* 🔥 MODIFICADO: Product/Brand cards */}

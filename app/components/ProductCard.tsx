@@ -6,6 +6,8 @@ interface ProductCardProps {
   product: Product;
 }
 
+
+
 const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
   const BASE_URL = "https://www.tiendapadelpoint.com/image/cache/";
 
